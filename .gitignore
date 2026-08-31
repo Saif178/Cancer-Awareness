@@ -2,3 +2,15 @@
 secrets.toml
 .env
 .env.*
+# Upgraded RAG generated artifacts
+models/
+__pycache__/
+.env
+*.pyc
+local_chroma_db_v2/
+local_chroma_db/
+*.pkl
+
+# GraphRAG generated runtime index
+medical_graph_v3.json
+local_chroma_db_v3/
