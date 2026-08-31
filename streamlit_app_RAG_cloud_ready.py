@@ -14,6 +14,7 @@ from rag_engine import MedicalRAG
 from medical_chunker import build_records
 from ingest_v2 import add_records
 from knowledge_graph.graph_viz import to_dot, template_to_dot
+from knowledge_graph.template_graph import build_template_layer
 
 try:
     import yt_dlp
@@ -193,10 +194,25 @@ if user_query:
 
                 st.subheader("🕸️ Knowledge Graph — Template View")
                 # The full ontology follows the supplied five-module template.
-                st.graphviz_chart(
-                    template_to_dot(rag.graph.template),
-                    use_container_width=True,
-                )
+                template_graph = getattr(rag.graph, "template", None)
+
+                if not template_graph:
+                    st.warning(
+                                "Template-aligned knowledge graph is not available."
+                            )
+                else:
+                    dot_source = template_to_dot(template_graph)
+
+                if not dot_source.strip():
+                    st.warning(
+                                "The template graph was created, but "
+                                "the Graphviz representation is empty."
+                            )
+                else:
+                    st.graphviz_chart(
+                                        dot_source,
+                                        use_container_width=True,
+                                    )
                 with st.expander("Question-specific graph paths and provenance", expanded=bool(graph_evidence)):
                     if graph_evidence:
                         st.graphviz_chart(to_dot(graph_evidence), use_container_width=True)
