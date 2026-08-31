@@ -1,22 +1,30 @@
-"""Lightweight GraphRAG smoke test (does not require Chroma or an LLM)."""
-import json
+"""Smoke test for the template-aligned Cancer Awareness knowledge graph."""
 from pathlib import Path
-from medical_chunker import build_records
+from config import SETTINGS
 from knowledge_graph.graph_store import MedicalKnowledgeGraph
-from knowledge_graph.graph_retriever import GraphRetriever
 
-root = Path(__file__).resolve().parent
-data = json.loads((root / "cancer_treatment_transcripts.json").read_text(encoding="utf-8"))
-records = []
-for video in data:
-    records.extend(build_records(video, 450, 80))
-path = Path("/tmp/cancer_awareness_graph_smoke.json")
-graph = MedicalKnowledgeGraph(str(path))
-entities, relations = graph.build_from_records(records)
-print(f"Built graph: {len(graph.nodes)} unique entities, {len(graph.edges)} relations")
-retriever = GraphRetriever(graph, max_hops=2, max_paths=10)
-for q in ["breast cancer symptoms", "breast cancer treatment and biomarkers", "colorectal cancer risk factors"]:
-    results = retriever.search(q)
-    print(f"\nQ: {q}\nSeeds: {retriever.link_entities(q)}\nPaths: {len(results)}")
-    for r in results[:3]:
-        print(" -", " -> ".join(r["path"]), "|", r["relation"], "|", r["metadata"]["chunk_id"])
+REQUIRED_MODULES = [
+    "module_blood_biomarkers",
+    "module_mammography",
+    "module_prostate",
+    "module_colorectal",
+    "module_diagnostics",
+]
+REQUIRED_RELATIONS = {"ACHIEVED_THROUGH", "OFTEN_FOLLOWED_BY", "LEADS_TO"}
+
+def main():
+    graph = MedicalKnowledgeGraph(str(Path(__file__).resolve().parent / "knowledge_graph" / "data" / "medical_graph_v3_template.json"))
+    ok, reason = graph.validate()
+    assert ok, reason
+    nodes = graph.template.get("nodes", {})
+    edges = graph.template.get("edges", [])
+    for m in REQUIRED_MODULES:
+        assert m in nodes, f"Missing template module: {m}"
+    rels={e.get("relation") for e in edges}
+    missing=REQUIRED_RELATIONS-rels
+    assert not missing, f"Missing template relationships: {missing}"
+    print("Template GraphRAG smoke test: PASS")
+    print(reason)
+
+if __name__ == "__main__":
+    main()

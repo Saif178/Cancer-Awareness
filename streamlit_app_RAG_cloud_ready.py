@@ -13,7 +13,7 @@ from config import SETTINGS
 from rag_engine import MedicalRAG
 from medical_chunker import build_records
 from ingest_v2 import add_records
-from knowledge_graph.graph_viz import to_dot
+from knowledge_graph.graph_viz import to_dot, template_to_dot
 
 try:
     import yt_dlp
@@ -191,18 +191,31 @@ if user_query:
                 badge = result.get("evidence_level", "UNKNOWN")
                 st.info(f"Evidence level: **{badge}** · confidence: **{result.get('confidence', 0):.2f}**")
 
-                st.subheader("🕸️ Knowledge Graph")
-                if graph_evidence:
-                    st.graphviz_chart(to_dot(graph_evidence), use_container_width=True)
-                    with st.expander("Graph paths and provenance", expanded=False):
+                st.subheader("🕸️ Knowledge Graph — Template View")
+                # The full ontology follows the supplied five-module template.
+                st.graphviz_chart(
+                    template_to_dot(rag.graph.template),
+                    use_container_width=True,
+                )
+                with st.expander("Question-specific graph paths and provenance", expanded=bool(graph_evidence)):
+                    if graph_evidence:
+                        st.graphviz_chart(to_dot(graph_evidence), use_container_width=True)
                         for p in graph_evidence:
                             path = " → ".join(p["path"])
                             st.markdown(f"**{path}**")
-                            st.caption(f"{p['relation']} · chunk `{p['chunk_id']}` · {p['title']}")
+                            st.caption(
+                                f"{p['relation']} · chunk `{p['chunk_id']}` · {p['title']}"
+                            )
                             if p.get("link"):
                                 st.markdown(f"[🎥 Original source]({p['link']})")
-                else:
-                    st.caption("No recognized oncology entity path was found for this question.")
+                    else:
+                        st.caption("No transcript-backed oncology entity path was found for this question.")
+                with st.expander("Template evidence sources", expanded=False):
+                    for s in rag.graph.template.get("sources", []):
+                        support=s.get("support", {})
+                        st.markdown(f"**[{s['id']}] {s['title']}**")
+                        if support.get("link"):
+                            st.markdown(f"[🎥 Source video]({support['link']})")
 
             with col_sources:
                 st.subheader("📑 Evidence")
