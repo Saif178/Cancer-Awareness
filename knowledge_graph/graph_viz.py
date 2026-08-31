@@ -29,163 +29,495 @@ def to_dot(graph_evidence, max_edges=20):
     return "\n".join(lines)
 
 def template_to_dot(template_graph, show_entity_details=False):
-    """Render the template graph using Graphviz-safe plain-text labels.
-
-    This intentionally avoids HTML-like Graphviz labels because malformed or
-    empty HTML labels can make Graphviz return a blank chart in Streamlit.
-    The supplied template layout is preserved with neato fixed positions.
     """
+    Render the Cancer Awareness template using standard Graphviz DOT layout.
+
+    Deliberately avoids:
+      - neato
+      - fixed pos coordinates
+      - pin=true
+      - HTML labels
+
+    This is more reliable with Streamlit's st.graphviz_chart().
+    """
+
     template_graph = template_graph or {}
+
     nodes = template_graph.get("nodes", {})
-    sources = {str(s.get("id")): s for s in template_graph.get("sources", []) if s.get("id")}
+    sources = template_graph.get("sources", [])
 
     def q(value):
-        # Graphviz quoted-label escaping. Keep labels plain text for portability.
-        return (str(value)
-                .replace("\\", "\\\\")
-                .replace('"', '\\"')
-                .replace("\r", "")
-                .replace("\n", "\\n"))
+        """Escape a Graphviz quoted string."""
+        return (
+            str(value)
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\r", "")
+            .replace("\n", "\\n")
+        )
 
-    positions = {
-        "module_blood_biomarkers": (-520, 230),
-        "module_mammography": (520, 230),
-        "module_prostate": (-520, 10),
-        "module_colorectal": (520, 10),
-        "module_diagnostics": (0, -230),
-    }
+    def node_id(value):
+        return "n_" + "".join(
+            ch if ch.isalnum() else "_"
+            for ch in str(value)
+        )
 
-    subgroup_xy = {
-        "module_blood_biomarkers__sample_types": (-650, 145),
-        "module_blood_biomarkers__key_features": (-520, 145),
-        "module_blood_biomarkers__benefits": (-390, 145),
-        "module_mammography__method": (390, 145),
-        "module_mammography__detects": (520, 145),
-        "module_mammography__benefits": (650, 145),
-        "module_prostate__who": (-650, -80),
-        "module_prostate__screening_methods": (-520, -80),
-        "module_prostate__benefits": (-390, -80),
-        "module_colorectal__screening_methods": (390, -80),
-        "module_colorectal__who_when": (520, -80),
-        "module_colorectal__benefits": (650, -80),
-        "module_diagnostics__imaging_tests": (-400, -330),
-        "module_diagnostics__laboratory_tests": (-200, -330),
-        "module_diagnostics__tissue_sampling": (0, -330),
-        "module_diagnostics__purpose": (200, -330),
-        "module_diagnostics__outcome": (400, -330),
-    }
+    def get_node_label(node_key, fallback):
+        node = nodes.get(node_key, {})
 
-    descriptions = {
-        "module_blood_biomarkers": "Detect cancer using biomarkers in body fluids",
-        "module_mammography": "Breast imaging used for early signs and screening",
-        "module_prostate": "Screening and detection for prostate cancer",
-        "module_colorectal": "Recommended screening methods for colorectal cancer",
-        "module_diagnostics": "Tests used to confirm diagnosis and determine extent",
-    }
+        if isinstance(node, dict):
+            label = node.get("label")
 
-    subgroup_items = {
-        "module_blood_biomarkers__sample_types": ["Blood", "Urine", "Saliva"],
-        "module_blood_biomarkers__key_features": ["Detects biomarkers", "Rapid testing potential", "Non-invasive testing potential"],
-        "module_blood_biomarkers__benefits": ["Accessible", "Efficient", "Early detection"],
-        "module_mammography__method": ["Mammography (2-D)", "3-D mammography / tomosynthesis"],
-        "module_mammography__detects": ["Microcalcifications", "Small tumors", "Early signs"],
-        "module_mammography__benefits": ["Higher detection rate", "Better for dense breast tissue"],
-        "module_prostate__who": ["Men over 50 / higher risk", "Family history", "Genetic risk"],
-        "module_prostate__screening_methods": ["PSA blood test", "Digital rectal exam", "MRI / imaging"],
-        "module_prostate__benefits": ["Detects early", "Supports treatment planning", "Monitors progression"],
-        "module_colorectal__screening_methods": ["Colonoscopy", "Blood tests (FIT)", "DNA stool tests", "CT colonography"],
-        "module_colorectal__who_when": ["Age / risk-based screening", "Higher risk: earlier and more frequent"],
-        "module_colorectal__benefits": ["Detects polyps & early cancer", "Supports prevention"],
-        "module_diagnostics__imaging_tests": ["Ultrasound", "X-rays", "CT scan", "MRI", "PET scan"],
-        "module_diagnostics__laboratory_tests": ["Blood tests", "Urine tests", "Tumor markers"],
-        "module_diagnostics__tissue_sampling": ["Biopsy", "Fine needle aspiration", "Endoscopic biopsy"],
-        "module_diagnostics__purpose": ["Confirm diagnosis", "Determine cancer type", "Assess stage", "Guide treatment"],
-        "module_diagnostics__outcome": ["Accurate diagnosis", "Treatment planning", "Monitor response"],
-    }
+            if label:
+                return str(label)
 
-    module_source = {
-        "module_blood_biomarkers": "E1",
-        "module_mammography": "E2",
-        "module_prostate": "E3",
-        "module_colorectal": "E4",
-        "module_diagnostics": "E5",
-    }
+        return fallback
 
-    # Template labels are deliberately fixed to the supplied visual template.
-    # The data graph remains the authoritative transcript-backed evidence graph.
     lines = [
         "digraph CancerAwarenessTemplate {",
-        'graph [layout=neato, overlap=false, splines=true, bgcolor="white", pad=0.35, outputorder=edgesfirst,',
-        'label="CANCER EARLY DETECTION KNOWLEDGE GRAPH\\nFrom Screening to Better Outcomes", labelloc=t, labeljust=c, fontsize=18, fontname="Arial"];',
-        'node [fontname="Arial", fontsize=10, margin="0.10,0.06", pin=true];',
-        'edge [fontname="Arial", fontsize=8, arrowsize=0.65, penwidth=1.3];',
-        'n_early_detection_of_cancer [pos="0,0!", shape=ellipse, width=2.6, height=1.5, style="filled", fillcolor="#F4EEFF", color="#512DA8", penwidth=2.2, fontcolor="#2F1B69", label="Early Detection\\nof Cancer\\n\\nImproves treatment outcomes, survival\\nrates and quality of life"];',
-        'n_better_outcomes [pos="720,-230!", shape=box, width=2.35, style="rounded,filled", fillcolor="#EEF8EE", color="#2E7D32", penwidth=1.8, fontcolor="#1B5E20", label="BETTER OUTCOMES\\n\\nEarly treatment\\nHigher survival rates\\nImproved quality of life\\nReduced healthcare costs"];',
+
+        # IMPORTANT:
+        # Use dot rather than neato/fixed coordinates.
+        'graph [rankdir=TB, bgcolor="white", '
+        'pad=0.30, nodesep=0.55, ranksep=0.85, '
+        'splines=ortho, overlap=false];',
+
+        'node [shape=box, style="rounded,filled", '
+        'fontname="Arial", fontsize=10, '
+        'margin="0.12,0.08", color="#666666", '
+        'fillcolor="white"];',
+
+        'edge [fontname="Arial", fontsize=8, '
+        'color="#777777", arrowsize=0.65];',
+
+        # --------------------------------------------------
+        # CENTRAL NODE
+        # --------------------------------------------------
+        'early_detection ['
+        'shape=ellipse, '
+        'style="filled", '
+        'fillcolor="#F4EEFF", '
+        'color="#512DA8", '
+        'penwidth=2.5, '
+        'fontcolor="#2F1B69", '
+        'fontsize=14, '
+        'label="EARLY DETECTION OF CANCER\\n\\n'
+        'Improves treatment outcomes, survival rates '
+        'and quality of life"'
+        '];',
+
+        # --------------------------------------------------
+        # OUTCOME
+        # --------------------------------------------------
+        'better_outcomes ['
+        'shape=box, '
+        'style="rounded,filled", '
+        'fillcolor="#EEF8EE", '
+        'color="#2E7D32", '
+        'penwidth=2.0, '
+        'fontcolor="#1B5E20", '
+        'fontsize=12, '
+        'label="BETTER OUTCOMES\\n\\n'
+        'Early treatment\\n'
+        'Higher survival rates\\n'
+        'Improved quality of life\\n'
+        'Reduced healthcare costs"'
+        '];',
     ]
 
-    # Fixed module nodes.
-    for mid, (x, y) in positions.items():
-        n = nodes.get(mid, {})
-        color = COLOR_HEX.get(n.get("color"), "#666666")
-        title = n.get("label") or mid.replace("module_", "").replace("_", " ").title()
-        eid = module_source.get(mid)
-        if eid:
-            title += f" [{eid}]"
-        desc = descriptions.get(mid, "")
-        label = f"{title}\\n{desc}"
+    # ======================================================
+    # TEMPLATE MODULES
+    # ======================================================
+
+    modules = [
+        (
+            "module_blood_biomarkers",
+            "Blood Tests & Biomarkers",
+            "Detect cancer using biomarkers in body fluids",
+            "#2E7D32",
+            "E1",
+        ),
+        (
+            "module_mammography",
+            "Mammography for Breast Cancer",
+            "Breast imaging used for early signs and screening",
+            "#1565C0",
+            "E2",
+        ),
+        (
+            "module_prostate",
+            "Prostate Cancer Detection",
+            "Screening and detection for prostate cancer",
+            "#512DA8",
+            "E3",
+        ),
+        (
+            "module_colorectal",
+            "Colorectal Cancer Screening",
+            "Recommended screening methods for colorectal cancer",
+            "#EF6C00",
+            "E4",
+        ),
+        (
+            "module_diagnostics",
+            "General Diagnostic Tests",
+            "Tests used to confirm diagnosis and determine extent",
+            "#00838F",
+            "E5",
+        ),
+    ]
+
+    # ------------------------------------------------------
+    # Four upper modules
+    # ------------------------------------------------------
+
+    for key, title, description, color, evidence_id in modules:
+
+        if key == "module_diagnostics":
+            continue
+
+        actual_title = get_node_label(key, title)
+
         lines.append(
-            f'n_{_node_id(mid)[2:]} [pos="{x},{y}!", shape=box, width=3.15, height=0.72, '
-            f'style="rounded,filled", fillcolor="#FFFFFF", color="{color}", penwidth=2.0, '
-            f'fontcolor="{color}", label="{q(label)}"];'
+            f'{node_id(key)} ['
+            f'shape=box, '
+            f'style="rounded,filled", '
+            f'fillcolor="white", '
+            f'color="{color}", '
+            f'penwidth=2.0, '
+            f'fontcolor="{color}", '
+            f'label="{q(actual_title)} [{evidence_id}]\\n'
+            f'{q(description)}"'
+            f'];'
         )
 
-    # Fixed subgroup nodes. Do not depend on subgroup labels existing in the JSON.
-    for sid, (x, y) in subgroup_xy.items():
-        n = nodes.get(sid, {})
-        color = COLOR_HEX.get(n.get("color"), "#777777")
-        fallback = sid.split("__", 1)[-1].replace("_", " ").title()
-        label = n.get("label") or fallback
-        items = subgroup_items.get(sid, [])
-        body = "\\n".join(f"- {item}" for item in items)
-        full_label = f"{label}\\n{body}" if body else label
+    # ======================================================
+    # SUBGROUPS
+    # ======================================================
+
+    subgroup_data = {
+        "module_blood_biomarkers": [
+            (
+                "sample_types",
+                "Sample Types",
+                ["Blood", "Urine", "Saliva"],
+            ),
+            (
+                "key_features",
+                "Key Features",
+                [
+                    "Detects biomarkers",
+                    "Rapid testing potential",
+                    "Non-invasive testing potential",
+                ],
+            ),
+            (
+                "benefits",
+                "Benefits",
+                [
+                    "Accessible",
+                    "Efficient",
+                    "Early detection",
+                ],
+            ),
+        ],
+
+        "module_mammography": [
+            (
+                "method",
+                "Method",
+                [
+                    "Mammography (2-D)",
+                    "3-D mammography / tomosynthesis",
+                ],
+            ),
+            (
+                "detects",
+                "Detects",
+                [
+                    "Microcalcifications",
+                    "Small tumors",
+                    "Early signs",
+                ],
+            ),
+            (
+                "benefits",
+                "Benefits",
+                [
+                    "Higher detection rate",
+                    "Better for dense breast tissue",
+                ],
+            ),
+        ],
+
+        "module_prostate": [
+            (
+                "who",
+                "Who",
+                [
+                    "Men over 50 / higher risk",
+                    "Family history",
+                    "Genetic risk",
+                ],
+            ),
+            (
+                "screening_methods",
+                "Screening Methods",
+                [
+                    "PSA blood test",
+                    "Digital rectal exam",
+                    "MRI / imaging",
+                ],
+            ),
+            (
+                "benefits",
+                "Benefits",
+                [
+                    "Detects early",
+                    "Supports treatment planning",
+                    "Monitors progression",
+                ],
+            ),
+        ],
+
+        "module_colorectal": [
+            (
+                "screening_methods",
+                "Screening Methods",
+                [
+                    "Colonoscopy",
+                    "Blood tests (FIT)",
+                    "DNA stool tests",
+                    "CT colonography",
+                ],
+            ),
+            (
+                "who_when",
+                "Who & When",
+                [
+                    "Age / risk-based screening",
+                    "Higher risk: earlier and more frequent",
+                ],
+            ),
+            (
+                "benefits",
+                "Benefits",
+                [
+                    "Detects polyps & early cancer",
+                    "Supports prevention",
+                ],
+            ),
+        ],
+
+        "module_diagnostics": [
+            (
+                "imaging_tests",
+                "Imaging Tests",
+                [
+                    "Ultrasound",
+                    "X-rays",
+                    "CT scan",
+                    "MRI",
+                    "PET scan",
+                ],
+            ),
+            (
+                "laboratory_tests",
+                "Laboratory Tests",
+                [
+                    "Blood tests",
+                    "Urine tests",
+                    "Tumor markers",
+                ],
+            ),
+            (
+                "tissue_sampling",
+                "Tissue Sampling",
+                [
+                    "Biopsy",
+                    "Fine needle aspiration",
+                    "Endoscopic biopsy",
+                ],
+            ),
+            (
+                "purpose",
+                "Purpose",
+                [
+                    "Confirm diagnosis",
+                    "Determine cancer type",
+                    "Assess stage",
+                    "Guide treatment",
+                ],
+            ),
+            (
+                "outcome",
+                "Outcome",
+                [
+                    "Accurate diagnosis",
+                    "Treatment planning",
+                    "Monitor response",
+                ],
+            ),
+        ],
+    }
+
+    module_colors = {
+        "module_blood_biomarkers": "#2E7D32",
+        "module_mammography": "#1565C0",
+        "module_prostate": "#512DA8",
+        "module_colorectal": "#EF6C00",
+        "module_diagnostics": "#00838F",
+    }
+
+    # ------------------------------------------------------
+    # Create subgroup nodes
+    # ------------------------------------------------------
+
+    for module_key, subgroups in subgroup_data.items():
+
+        color = module_colors[module_key]
+
+        for subgroup_key, title, items in subgroups:
+
+            full_key = f"{module_key}__{subgroup_key}"
+
+            actual_title = get_node_label(
+                full_key,
+                title,
+            )
+
+            item_text = "\\n".join(
+                f"- {item}"
+                for item in items
+            )
+
+            lines.append(
+                f'{node_id(full_key)} ['
+                f'shape=box, '
+                f'style="rounded,filled", '
+                f'fillcolor="#FAFCFE", '
+                f'color="{color}", '
+                f'penwidth=1.2, '
+                f'fontcolor="{color}", '
+                f'fontsize=9, '
+                f'label="{q(actual_title)}\\n'
+                f'{q(item_text)}"'
+                f'];'
+            )
+
+    # ======================================================
+    # MODULE → SUBGROUP
+    # ======================================================
+
+    for module_key, subgroups in subgroup_data.items():
+
+        for subgroup_key, _, _ in subgroups:
+
+            full_key = f"{module_key}__{subgroup_key}"
+
+            lines.append(
+                f'{node_id(module_key)} -> '
+                f'{node_id(full_key)} '
+                f'[color="{module_colors[module_key]}", '
+                f'penwidth=1.0, '
+                f'arrowsize=0.5];'
+            )
+
+    # ======================================================
+    # MODULE → CENTRAL NODE
+    # ======================================================
+
+    for module_key, _, _, color, _ in modules:
+
+        if module_key == "module_diagnostics":
+            continue
+
         lines.append(
-            f'n_{_node_id(sid)[2:]} [pos="{x},{y}!", shape=box, width=1.95, height=0.88, '
-            f'style="rounded,filled", fillcolor="#FAFCFE", color="{color}", penwidth=1.15, '
-            f'fontcolor="{color}", label="{q(full_label)}"];'
+            f'{node_id(module_key)} -> early_detection '
+            f'[label="achieved through", '
+            f'color="{color}", '
+            f'fontcolor="{color}"];'
         )
 
-    # Module -> subgroup edges.
-    for mid in positions:
-        color = COLOR_HEX.get(nodes.get(mid, {}).get("color"), "#666666")
-        for sid in subgroup_xy:
-            if sid.startswith(mid + "__"):
-                lines.append(
-                    f'n_{_node_id(mid)[2:]} -> n_{_node_id(sid)[2:]} '
-                    f'[color="{color}", penwidth=1.0, arrowsize=0.5];'
+    # ======================================================
+    # CENTRAL → DIAGNOSTICS
+    # ======================================================
+
+    lines.append(
+        f'{node_id("module_diagnostics")} '
+        f'[shape=box, '
+        f'style="rounded,filled", '
+        f'fillcolor="white", '
+        f'color="#00838F", '
+        f'penwidth=2.0, '
+        f'fontcolor="#00838F", '
+        f'label="General Diagnostic Tests [E5]\\n'
+        f'Tests used to confirm diagnosis and determine extent"];'
+    )
+
+    lines.append(
+        'early_detection -> '
+        f'{node_id("module_diagnostics")} '
+        '[label="often followed by", '
+        'color="#512DA8", '
+        'fontcolor="#512DA8", '
+        'penwidth=1.5];'
+    )
+
+    # ======================================================
+    # DIAGNOSTICS → OUTCOME
+    # ======================================================
+
+    lines.append(
+        f'{node_id("module_diagnostics")} -> '
+        'better_outcomes '
+        '[label="leads to", '
+        'color="#2E7D32", '
+        'fontcolor="#2E7D32", '
+        'penwidth=2.0];'
+    )
+
+    # ======================================================
+    # EVIDENCE SOURCES
+    # ======================================================
+
+    if sources:
+
+        source_lines = []
+
+        for source in sources:
+
+            if not isinstance(source, dict):
+                continue
+
+            sid = source.get("id", "")
+            title = source.get("title", "")
+
+            if sid and title:
+                source_lines.append(
+                    f"[{sid}] {title}"
                 )
 
-    # Main template relationships.
-    for mid in ("module_blood_biomarkers", "module_mammography", "module_prostate", "module_colorectal"):
-        color = COLOR_HEX.get(nodes.get(mid, {}).get("color"), "#555555")
-        lines.append(
-            f'n_{_node_id(mid)[2:]} -> n_early_detection_of_cancer '
-            f'[label="achieved through", color="{color}", fontcolor="{color}"];'
-        )
-    lines.append('n_early_detection_of_cancer -> n_module_diagnostics [label="often followed by", color="#512DA8", fontcolor="#512DA8"];')
-    lines.append('n_module_diagnostics -> n_better_outcomes [label="leads to", color="#2E7D32", fontcolor="#2E7D32", penwidth=1.8];')
+        if source_lines:
 
-    # Evidence footer, plain text rather than HTML labels.
-    source_lines = []
-    for eid in ("E1", "E2", "E3", "E4", "E5", "E6"):
-        if eid in sources:
-            source_lines.append(f"[{eid}] {sources[eid].get('title', '')}")
-    if source_lines:
-        footer = "\\n".join(source_lines)
-        lines.append(
-            f'evidence_sources [pos="0,-480!", shape=box, width=11.5, height=0.95, '
-            f'style="rounded,filled", fillcolor="#FFFFFF", color="#999999", penwidth=1.0, '
-            f'fontcolor="#333333", fontsize=8, label="EVIDENCE SOURCES\\n{q(footer)}"];'
-        )
+            lines.append(
+                'evidence_sources ['
+                'shape=box, '
+                'style="rounded,filled", '
+                'fillcolor="white", '
+                'color="#999999", '
+                'fontcolor="#333333", '
+                'fontsize=8, '
+                f'label="{q("EVIDENCE SOURCES")}\\n'
+                f'{q(chr(10).join(source_lines))}"'
+                '];'
+            )
+
+            lines.append(
+                'better_outcomes -> evidence_sources '
+                '[style=invis];'
+            )
 
     lines.append("}")
+
     return "\n".join(lines)
